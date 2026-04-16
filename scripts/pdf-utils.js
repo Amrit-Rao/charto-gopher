@@ -28,7 +28,7 @@ export async function loadPdfDescriptor(file, pdfjsLib) {
 export async function validateWithOpenAlex({ title, identifiers }) {
   if (identifiers.doi) {
     try {
-      const response = await fetch(`${OPENALEX_BASE}/works/https://doi.org/${encodeURIComponent(identifiers.doi)}`);
+      const response = await fetch(`${OPENALEX_BASE}/works/doi:${identifiers.doi}`);
       if (response.ok) {
         const work = await response.json();
         return { valid: true, confidence: 1, work };
@@ -36,7 +36,7 @@ export async function validateWithOpenAlex({ title, identifiers }) {
     } catch {}
   }
 
-  const response = await fetch(`${OPENALEX_BASE}/works?search=${encodeURIComponent(title)}&per-page=5&select=id,display_name,doi,ids,referenced_works_count,publication_year,authorships,abstract_inverted_index`);
+  const response = await fetch(`${OPENALEX_BASE}/works/doi:${identifiers.doi}?&select=id,display_name,doi,referenced_works_count,publication_year,authorships,abstract_inverted_index`);
   const data = await response.json();
   const candidates = data.results || [];
   const scored = candidates.map((candidate) => ({
