@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Reader Prototype</title>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <p class="eyebrow">Prototype</p>
+        <h1>Research Reader + Graph</h1>
+      </div>
+      
+    </header>
+
+    <main class="workspace">
+      <aside class="left-panel">
+        <div class="panel-card doc-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Documents</h2>
+            </div>
+            <span id="document-count" class="badge">0</span>
+          </div>
+
+          <div id="documents-list" class="documents-list">
+            <div class="placeholder-card">No PDFs loaded yet.</div>
+          </div>
+
+          <label class="file-picker doc-upload">
+            <input id="pdf-upload" type="file" accept="application/pdf" multiple>
+            <span>+ Add PDFs</span>
+          </label>
+        </div>
+
+        <div class="panel-card instructions">
+          <h2>Workflow</h2>
+          <p>Select text to highlight it. Add a comment only when you need one.</p>
+          <p>Graph mode asks for seed papers and depth, then expands through OpenAlex references.</p>
+        </div>
+      </aside>
+
+      <section class="center-panel">
+        <div class="center-toolbar">
+          <div class="mode-switch" role="tablist" aria-label="Application mode">
+            <button id="mode-reader" class="mode-button is-active" type="button" role="tab" aria-selected="true">Reader</button>
+            <button id="mode-graph" class="mode-button" type="button" role="tab" aria-selected="false">Knowledge Graph</button>
+          </div>
+          <div class="pagination-controls">
+            <button id="prev-page" class="ghost-button" type="button">Prev</button>
+            <div class="page-indicator">
+              <span id="current-page">0</span>
+              <span>/</span>
+              <span id="total-pages">0</span>
+            </div>
+            <button id="next-page" class="ghost-button" type="button">Next</button>
+          </div>
+        </div>
+        <div class="graph-ribbon">
+          <div>
+            <p class="eyebrow">Knowledge Graph</p>
+            <p id="graph-summary" class="graph-summary">Open a PDF, then pop the graph open to map references.</p>
+          </div>
+          <button id="graph-ribbon-action" class="solid-button" type="button">Open Graph</button>
+        </div>
+
+        <section id="reader-panel" class="reader-panel mode-panel">
+          <div id="reader-empty-state" class="empty-state">
+            <h2>Open one or more PDFs to start</h2>
+            <p>Use Reader mode to highlight text, attach comments, and take notes.</p>
+          </div>
+          <div id="pdf-container" class="pdf-container hidden"></div>
+        </section>
+
+        <section id="graph-panel" class="graph-panel mode-panel hidden">
+          <div id="graph-empty-state" class="empty-state">
+            <h2>No graph yet</h2>
+            <p>Load a valid paper and open graph mode to expand references from OpenAlex.</p>
+          </div>
+          <div id="graph-stage" class="graph-stage hidden">
+            <svg id="graph-edges" class="graph-edges"><g id="graph-edges-group"></g></svg>
+            <div id="graph-nodes" class="graph-nodes"></div>
+          </div>
+        </section>
+      </section>
+
+      <aside class="right-panel">
+        <section id="reader-sidebar" class="sidebar-shell">
+          <div class="tabs" role="tablist" aria-label="Reader sidebar tabs">
+            <button id="tab-comments" class="tab is-active" type="button" role="tab" aria-selected="true">Comments</button>
+            <button id="tab-notes" class="tab" type="button" role="tab" aria-selected="false">Notes</button>
+          </div>
+
+          <section id="comments-view" class="sidebar-view">
+            <div class="sidebar-header">
+              <h2>Comments</h2>
+              <p class="muted" id="comment-count">0 comments</p>
+            </div>
+            <div id="comments-list" class="list-stack">
+              <div class="placeholder-card">No comments yet.</div>
+            </div>
+          </section>
+
+          <section id="notes-view" class="sidebar-view hidden">
+            <div class="sidebar-header">
+              <h2>Notes</h2>
+              <p class="muted">Markdown preview with comment references like `[[C1]]`.</p>
+            </div>
+            <div class="notes-grid">
+              <div class="notes-column">
+                <div class="mini-heading">Markdown</div>
+                <textarea id="notes-textarea" class="notes-editor" placeholder="Write notes here. Reference comments like [[C1]]."></textarea>
+              </div>
+              <div class="notes-column">
+                <div class="mini-heading">Preview</div>
+                <div id="notes-preview" class="notes-preview">
+                  <div class="placeholder-card">Your rendered notes will appear here.</div>
+                </div>
+              </div>
+            </div>
+            <p id="notes-status" class="muted">Nothing saved yet.</p>
+          </section>
+        </section>
+
+        <section id="graph-sidebar" class="sidebar-shell hidden">
+          <div class="sidebar-header">
+            <h2>Graph Controls</h2>
+            <p class="muted" id="graph-status">Graph is idle.</p>
+          </div>
+
+          <div class="graph-form card-stack">
+            <button id="change-graph-config" class="ghost-button" type="button">Change Seeds / Depth</button>
+            <label class="field-label" for="resolver-template">OpenAlex / Manual Resolver</label>
+            <input id="resolver-template" class="text-field" type="text" placeholder="https://api.openalex.org/works?search={query}&per-page=5">
+            <p class="muted small-copy">Default graph expansion uses OpenAlex directly. This resolver is only for manual recovery of missing nodes.</p>
+            <button id="fetch-reference-metadata" class="solid-button" type="button">Try Resolver For Missing Nodes</button>
+            <p id="resolver-status" class="muted">No fetches run yet.</p>
+          </div>
+
+          <div class="graph-meta card-stack">
+            <h3>Selected Node</h3>
+            <div id="graph-selection" class="graph-selection placeholder-card">Select a node to inspect it.</div>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+
+
+  <div id="comment-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>Add comment</h2>
+        <button id="close-modal" class="icon-button" type="button" aria-label="Close">&times;</button>
+      </div>
+      <p id="modal-context" class="muted">Selection</p>
+      <textarea id="comment-input" class="comment-input" placeholder="Leave a review comment for this highlighted text..."></textarea>
+      <div class="modal-actions">
+        <button id="cancel-comment" class="ghost-button" type="button">Cancel</button>
+        <button id="save-comment" class="solid-button" type="button">Save comment</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="graph-config-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal-card graph-config-card">
+      <div class="modal-header">
+        <h2>Build Knowledge Graph</h2>
+        <button id="close-graph-config" class="icon-button" type="button" aria-label="Close">&times;</button>
+      </div>
+      <p class="muted">Choose up to 3 validated seed papers and how far the graph should expand.</p>
+      <div id="seed-list" class="seed-list"></div>
+      <label class="field-label" for="graph-depth">Depth</label>
+      <select id="graph-depth" class="text-field">
+        <option value="1">1 � seed paper references only</option>
+        <option value="2">2 � references from referenced papers too</option>
+      </select>
+      <div class="modal-actions">
+        <button id="cancel-graph-config" class="ghost-button" type="button">Cancel</button>
+        <button id="build-graph" class="solid-button" type="button">Build graph</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./scripts/main.js"></script>
+</body>
+</html>

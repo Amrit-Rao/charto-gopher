@@ -1,0 +1,9 @@
+{
+  "name": "pdf-reader-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Lightweight PDF reader prototype with comments and notes.",
+  "scripts": {
+    "serve:python": "python -m http.server 4173"
+  }
+}
