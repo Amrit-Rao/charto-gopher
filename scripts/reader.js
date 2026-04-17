@@ -25,7 +25,7 @@ export class ReaderController {
     e.tabComments.addEventListener("click", () => this.setActiveTab("comments"));
     e.tabNotes.addEventListener("click", () => this.setActiveTab("notes"));
     e.notesTextarea.addEventListener("input", (event) => this.onNotesInput(event));
-            e.saveComment.addEventListener("click", () => this.saveSelectionComment());
+    e.saveComment.addEventListener("click", () => this.saveSelectionComment());
     e.cancelComment.addEventListener("click", () => this.closeCommentModal());
     e.closeModal.addEventListener("click", () => this.closeCommentModal());
     e.modal.addEventListener("click", (event) => { if (event.target === e.modal) this.closeCommentModal(); });
@@ -39,7 +39,7 @@ export class ReaderController {
 
   deactivate() {
     this.teardownPages();
-        this.elements.readerPanel.classList.add("hidden");
+    this.elements.readerPanel.classList.add("hidden");
     this.elements.readerSidebar.classList.add("hidden");
   }
 
@@ -79,7 +79,10 @@ export class ReaderController {
   buildPages(doc) {
     this.teardownPages();
     const fragment = document.createDocumentFragment();
-    this.observer = new IntersectionObserver((entries) => this.handlePageVisibility(entries), { root: this.elements.readerPanel, threshold: 0.3 });
+    this.observer = new IntersectionObserver((entries) => this.handlePageVisibility(entries), { 
+      root: this.elements.readerPanel, 
+      threshold: 0.1 
+    });
 
     for (let pageNumber = 1; pageNumber <= doc.pdfDoc.numPages; pageNumber += 1) {
       const pageElement = document.createElement("article");
@@ -87,10 +90,10 @@ export class ReaderController {
       pageElement.dataset.pageNumber = String(pageNumber);
       pageElement.innerHTML = `
         <div class="page-label">Page ${pageNumber}</div>
-        <div class="page-shell">
+        <div class="page-shell" style="position: relative; display: inline-block;">
           <canvas class="page-canvas"></canvas>
-          <div class="text-layer"></div>
-          <div class="highlight-layer"></div>
+          <div class="text-layer" style="position: absolute; top: 0; left: 0;"></div>
+          <div class="highlight-layer" style="position: absolute; top: 0; left: 0; pointer-events: none; width: 100%; height: 100%;"></div>
         </div>
       `;
       fragment.appendChild(pageElement);
@@ -129,18 +132,21 @@ export class ReaderController {
 
   async renderPage(doc, pageState) {
     const pdfPage = await doc.pdfDoc.getPage(pageState.pageNumber);
-    const parentWidth = Math.min(pageState.pageElement.clientWidth - 36, 884);
+    const parentWidth = Math.min(pageState.pageElement.clientWidth - 36, 1200);
     const initialViewport = pdfPage.getViewport({ scale: 1 });
     const scale = parentWidth / initialViewport.width;
     const viewport = pdfPage.getViewport({ scale });
-    const pixelRatio = window.devicePixelRatio || 1;
+    
     const canvas = pageState.canvas;
     const context = canvas.getContext("2d");
-    canvas.width = Math.floor(viewport.width * pixelRatio);
-    canvas.height = Math.floor(viewport.height * pixelRatio);
+    const dpr = window.devicePixelRatio || 1;
+    
+    canvas.width = Math.floor(viewport.width * dpr);
+    canvas.height = Math.floor(viewport.height * dpr);
     canvas.style.width = `${viewport.width}px`;
     canvas.style.height = `${viewport.height}px`;
-    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+
     await pdfPage.render({ canvasContext: context, viewport }).promise;
 
     const textLayer = pageState.textLayer;
@@ -148,12 +154,15 @@ export class ReaderController {
     textLayer.style.width = `${viewport.width}px`;
     textLayer.style.height = `${viewport.height}px`;
     const textContent = await pdfPage.getTextContent();
-    const task = this.pdfjsLib.renderTextLayer({ textContentSource: textContent, container: textLayer, viewport });
-    await (task.promise || Promise.resolve());
-    textLayer.addEventListener("mouseup", () => this.handleTextSelection(pageState));
+    await this.pdfjsLib.renderTextLayer({
+      textContentSource: textContent,
+      container: textLayer,
+      viewport,
+      enhanceTextSelection: true
+    }).promise;
 
-    pageState.highlightLayer.style.width = `${viewport.width}px`;
-    pageState.highlightLayer.style.height = `${viewport.height}px`;
+    textLayer.addEventListener("mouseup", () => this.handleTextSelection(pageState));
+    
     pageState.rendered = true;
     this.renderHighlightsForPage(pageState.pageNumber);
   }
@@ -161,16 +170,25 @@ export class ReaderController {
   handleTextSelection(pageState) {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
+
     const range = selection.getRangeAt(0);
-    if (!pageState.textLayer.contains(range.commonAncestorContainer)) return;
-    const rects = Array.from(range.getClientRects()).map((rect) => this.rectToRelative(rect, pageState.textLayer)).filter((rect) => rect.width > 0 && rect.height > 0);
+    const textLayer = pageState.textLayer;
+    
+    if (!textLayer.contains(range.commonAncestorContainer)) return;
+
+    const rects = Array.from(range.getClientRects())
+      .map((rect) => this.rectToRelative(rect, textLayer))
+      .filter((rect) => rect.width > 0.001 && rect.height > 0.001);
+
     if (rects.length === 0) return;
+
     this.pendingSelection = {
       pageNumber: pageState.pageNumber,
-      text: selection.toString().trim(),
+      text: selection.toString().trim() || "[Selected Area/Formula]",
       rects,
     };
-    this.commitSelection(false);
+    
+    this.commitSelection(true);
   }
 
   showSelectionToolbar(x, y) {}
@@ -181,6 +199,7 @@ export class ReaderController {
     const doc = getCurrentDocument();
     if (!doc || !this.pendingSelection) return;
     if (!doc.highlights) doc.highlights = [];
+
     const highlight = {
       id: crypto.randomUUID(),
       pageNumber: this.pendingSelection.pageNumber,
@@ -189,19 +208,21 @@ export class ReaderController {
       commentId: null,
       createdAt: new Date().toISOString(),
     };
+
     doc.highlights.push(highlight);
     this.persistDocument(doc);
     this.renderHighlightsForPage(highlight.pageNumber);
     emit();
-        window.getSelection()?.removeAllRanges();
+
     if (withComment) {
       this.pendingHighlightWithComment = highlight.id;
-      this.elements.modalContext.textContent = `Page ${highlight.pageNumber} � ${highlight.text.slice(0, 120)}`;
+      this.elements.modalContext.textContent = `Page ${highlight.pageNumber}: ${highlight.text.slice(0, 100)}...`;
       this.elements.commentInput.value = "";
       this.elements.modal.classList.remove("hidden");
     } else {
       this.pendingSelection = null;
     }
+    window.getSelection()?.removeAllRanges();
   }
 
   saveSelectionComment() {
@@ -216,7 +237,7 @@ export class ReaderController {
       this.closeCommentModal();
       return;
     }
-    const maxNumber = doc.comments.reduce((highest, comment) => Math.max(highest, Number(comment.number) || 0), 0);
+    const maxNumber = (doc.comments || []).reduce((highest, comment) => Math.max(highest, Number(comment.number) || 0), 0);
     const comment = {
       id: crypto.randomUUID(),
       number: maxNumber + 1,
@@ -228,7 +249,7 @@ export class ReaderController {
       createdAt: new Date().toISOString(),
     };
     highlight.commentId = comment.id;
-    doc.comments = [comment, ...doc.comments];
+    doc.comments = [comment, ...(doc.comments || [])];
     this.activeCommentId = comment.id;
     this.persistDocument(doc);
     this.renderCommentsList();
@@ -248,56 +269,47 @@ export class ReaderController {
   renderHighlightsForPage(pageNumber) {
     const doc = getCurrentDocument();
     const pageState = this.pageStates.get(pageNumber);
-    if (!doc || !pageState) return;
+    if (!doc || !pageState || !pageState.rendered) return;
+
     pageState.highlightLayer.innerHTML = "";
     const highlights = (doc.highlights || []).filter((item) => item.pageNumber === pageNumber);
-    for (const highlight of highlights) {
+
+    highlights.forEach((highlight) => {
       const group = document.createElement("div");
       group.className = `highlight-group${highlight.commentId ? " has-comment" : ""}`;
+      group.style.pointerEvents = "auto";
       if (highlight.commentId === this.activeCommentId) group.classList.add("is-active");
-      const comment = doc.comments.find((item) => item.id === highlight.commentId);
+
       highlight.rects.forEach((rect) => {
-        const box = document.createElement("button");
-        box.type = "button";
+        const box = document.createElement("div");
         box.className = "highlight-box";
-        box.style.left = `${rect.x * 100}%`;
-        box.style.top = `${rect.y * 100}%`;
-        box.style.width = `${rect.width * 100}%`;
-        box.style.height = `${rect.height * 100}%`;
-        box.addEventListener("click", (event) => {
-          event.stopPropagation();
-          if (comment) {
-            this.focusComment(comment.id);
-          } else {
-            this.pendingSelection = {
-              pageNumber: highlight.pageNumber,
-              text: highlight.text,
-              rects: highlight.rects
-            };
-            this.pendingHighlightWithComment = highlight.id;
-            this.elements.modalContext.textContent = `Page ${highlight.pageNumber} — ${highlight.text.slice(0, 120)}`;
-            this.elements.commentInput.value = "";
-            this.elements.modal.classList.remove("hidden");
+        Object.assign(box.style, {
+          position: "absolute",
+          left: `${rect.x * 100}%`,
+          top: `${rect.y * 100}%`,
+          width: `${rect.width * 100}%`,
+          height: `${rect.height * 100}%`,
+          backgroundColor: highlight.commentId === this.activeCommentId ? "rgba(255, 255, 0, 0.5)" : "rgba(255, 255, 0, 0.3)",
+          cursor: "pointer",
+          zIndex: 5
+        });
+
+        box.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (highlight.commentId) {
+            this.focusComment(highlight.commentId);
           }
         });
         group.appendChild(box);
       });
-      if (comment) {
-        const popover = document.createElement("div");
-        popover.className = "highlight-comment-popover";
-        const firstRect = highlight.rects[0];
-        popover.style.left = `${firstRect.x * 100}%`;
-        popover.style.top = `${(firstRect.y + firstRect.height) * 100}%`;
-        popover.innerHTML = `<strong>${comment.ref}</strong><div>${this.escapeHtml(comment.text)}</div>`;
-        group.appendChild(popover);
-      }
+
       pageState.highlightLayer.appendChild(group);
-    }
+    });
   }
 
   renderCommentsList() {
     const doc = getCurrentDocument();
-    if (!doc || doc.comments.length === 0) {
+    if (!doc || !doc.comments || doc.comments.length === 0) {
       this.elements.commentCount.textContent = "0 comments";
       this.elements.commentsList.innerHTML = '<div class="placeholder-card">No comments yet.</div>';
       return;
@@ -306,8 +318,7 @@ export class ReaderController {
     const fragment = document.createDocumentFragment();
     doc.comments.forEach((comment) => {
       const card = document.createElement("article");
-      card.className = "comment-card";
-      if (comment.id === this.activeCommentId) card.classList.add("is-active");
+      card.className = `comment-card ${comment.id === this.activeCommentId ? "is-active" : ""}`;
       card.innerHTML = `
         <h3><span class="comment-tag">${comment.ref}</span><span>Page ${comment.pageNumber}</span></h3>
         <p>${this.escapeHtml(comment.text)}</p>
@@ -373,7 +384,7 @@ export class ReaderController {
     }
     const html = marked.parse(doc.notes);
     const withRefs = html.replace(/\[\[(C\d+)\]\]/g, (match, ref) => {
-      const comment = doc.comments.find((item) => item.ref === ref);
+      const comment = (doc.comments || []).find((item) => item.ref === ref);
       return comment ? `<button type="button" class="comment-ref" data-comment-id="${comment.id}">${ref}</button>` : `<span class="comment-ref">${ref}</span>`;
     });
     this.elements.notesPreview.innerHTML = withRefs;
@@ -401,10 +412,10 @@ export class ReaderController {
   rectToRelative(rect, container) {
     const bounds = container.getBoundingClientRect();
     return {
-      x: (rect.left - bounds.left) / bounds.width,
-      y: (rect.top - bounds.top) / bounds.height,
-      width: rect.width / bounds.width,
-      height: rect.height / bounds.height,
+      x: Math.max(0, (rect.left - bounds.left) / bounds.width),
+      y: Math.max(0, (rect.top - bounds.top) / bounds.height),
+      width: Math.min(1, rect.width / bounds.width),
+      height: Math.min(1, rect.height / bounds.height),
     };
   }
 
