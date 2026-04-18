@@ -35,6 +35,7 @@
             <input id="pdf-upload" type="file" accept="application/pdf" multiple>
             <span>+ Add PDFs</span>
           </label>
+          <p id="upload-status" class="muted small-copy" aria-live="polite">Ready to upload PDFs.</p>
         </div>
 
         <div class="panel-card instructions">
@@ -177,14 +178,20 @@
       <div id="seed-list" class="seed-list"></div>
       <label class="field-label" for="graph-depth">Depth</label>
       <select id="graph-depth" class="text-field">
-        <option value="1">1 � seed paper references only</option>
-        <option value="2">2 � references from referenced papers too</option>
+        <option value="1">1 - seed paper references only</option>
+        <option value="2">2 - references from referenced papers too</option>
       </select>
       <div class="modal-actions">
         <button id="cancel-graph-config" class="ghost-button" type="button">Cancel</button>
         <button id="build-graph" class="solid-button" type="button">Build graph</button>
       </div>
     </div>
+  </div>
+
+  <div id="selection-context-menu" class="selection-context-menu hidden" aria-hidden="true">
+    <button id="selection-copy" class="ghost-button" type="button">Copy</button>
+    <button id="selection-highlight" class="ghost-button" type="button">Highlight</button>
+    <button id="selection-highlight-comment" class="solid-button" type="button">Highlight + Comment</button>
   </div>
 
   <script type="module" src="./scripts/main.js"></script>
