@@ -6,29 +6,49 @@ export function buildDocumentKey(file) {
 
 export async function loadPdfDescriptor(file, pdfjsLib) {
   const bytes = await file.arrayBuffer();
-  const pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+  let pdfDoc;
+  try {
+    pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+  } catch {
+    throw new Error(`"${file.name}" could not be opened as a valid PDF.`);
+  }
   const metadata = await pdfDoc.getMetadata().catch(() => null);
-  const firstPageText = await extractPageText(pdfDoc, 1);
+  const firstPageText = await extractPageText(pdfDoc, 1).catch(() => "");
   const identifiers = extractIdentifiers(`${firstPageText}\n${file.name}`);
   const title = inferTitle(metadata?.info?.Title, firstPageText, file.name);
   const abstract = inferAbstract(firstPageText);
-  const openAlex = await validateWithOpenAlex({ title, identifiers });
 
   return {
     pdfDoc,
     metadata,
     title,
     abstract,
-    firstPagePreview: await renderPagePreview(pdfDoc, 1, 220),
     identifiers,
-    openAlex,
+  };
+}
+
+export async function enrichPdfDescriptor(descriptor) {
+  const [previewResult, validationResult] = await Promise.allSettled([
+    renderPagePreview(descriptor.pdfDoc, 1, 220),
+    validateWithOpenAlex({ title: descriptor.title, identifiers: descriptor.identifiers }),
+  ]);
+
+  return {
+    firstPagePreview: previewResult.status === "fulfilled" ? previewResult.value : "",
+    openAlex: validationResult.status === "fulfilled"
+      ? validationResult.value
+      : {
+        valid: false,
+        confidence: 0,
+        error: "OpenAlex validation failed for this document.",
+      },
   };
 }
 
 export async function validateWithOpenAlex({ title, identifiers }) {
   if (identifiers.doi) {
     try {
-      const response = await fetch(`${OPENALEX_BASE}/works/doi:${identifiers.doi}`);
+      const response = await fetch(`${OPENALEX_BASE}/works/https://doi.org/${encodeURIComponent(identifiers.doi)}`);
       if (response.ok) {
         const work = await response.json();
         return { valid: true, confidence: 1, work };
@@ -36,7 +56,7 @@ export async function validateWithOpenAlex({ title, identifiers }) {
     } catch {}
   }
 
-  const response = await fetch(`${OPENALEX_BASE}/works/doi:${identifiers.doi}?&select=id,display_name,doi,referenced_works_count,publication_year,authorships,abstract_inverted_index`);
+  const response = await fetch(`${OPENALEX_BASE}/works?search=${encodeURIComponent(title)}&per-page=5&select=id,display_name,doi,ids,referenced_works_count,publication_year,authorships,abstract_inverted_index`);
   const data = await response.json();
   const candidates = data.results || [];
   const scored = candidates.map((candidate) => ({
@@ -49,7 +69,7 @@ export async function validateWithOpenAlex({ title, identifiers }) {
     return {
       valid: false,
       confidence: best?.score || 0,
-      error: `Could not confidently match this PDF to OpenAlex for graph expansion.`
+      error: "Could not confidently match this PDF to OpenAlex for graph expansion.",
     };
   }
 
