@@ -32,7 +32,7 @@ export async function loadPdfDescriptor(file, pdfjsLib) {
  * 3. Validates similarity to ensure accuracy
  */
 export async function validateWithOpenAlex({ title, identifiers }) {
-  const selectFields = "id,display_name,doi,referenced_works,abstract_inverted_index,publication_year";
+  const selectFields = "id,display_name,doi,referenced_works,abstract_inverted_index,publication_year,cited_by_count";
   
   try {
     // --- PHASE 1: DIRECT DOI LOOKUP ---
