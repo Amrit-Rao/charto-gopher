@@ -1,4 +1,4 @@
-import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.mjs";
+﻿import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.mjs";
 import { GraphController } from "./graph-openalex.js";
 import { buildDocumentKey, enrichPdfDescriptor, loadPdfDescriptor } from "./pdf-utils.js";
 import { ReaderController } from "./reader.js";
@@ -74,6 +74,19 @@ const elements = {
   buildGraph: document.getElementById("build-graph"),
   seedList: document.getElementById("seed-list"),
   graphDepth: document.getElementById("graph-depth"),
+  graphMaxRefs: document.getElementById("graph-max-refs"),
+  graphMaxRefsDisplay: document.getElementById("graph-max-refs-display"),
+  resetGraphLayout: document.getElementById("reset-graph-layout"),
+  graphNodeColors: document.getElementById("graph-node-colors"),
+  graphNodeNotes: document.getElementById("graph-node-notes"),
+  graphNodeMetaControls: document.getElementById("graph-node-meta-controls"),
+  graphIndicators: document.getElementById("graph-indicators"),
+  graphContextMenu: document.getElementById("graph-context-menu"),
+  contextNodeColors: document.getElementById("context-node-colors"),
+  contextDownloadBtn: document.getElementById("context-download-btn"),
+  graphZoomIn: document.getElementById("graph-zoom-in"),
+  graphZoomReset: document.getElementById("graph-zoom-reset"),
+  graphZoomOut: document.getElementById("graph-zoom-out"),
 };
 
 const reader = new ReaderController(elements, pdfjsLib);
@@ -242,9 +255,9 @@ function renderDocumentsList() {
         : `<span>${doc.openAlex?.confidence ? `OpenAlex match ${(doc.openAlex.confidence * 100).toFixed(0)}%` : "Validated"}</span>`;
     button.innerHTML = `
       <strong>${escapeHtml(doc.title)}</strong>
-      <span>${formatBytes(doc.size)} - ${doc.pdfDoc.numPages} pages</span>
-      <span>${doc.comments.length} comment${doc.comments.length === 1 ? "" : "s"} - ${(doc.highlights || []).length} highlight${(doc.highlights || []).length === 1 ? "" : "s"}</span>
-      ${validationSummary}
+      <span>${formatBytes(doc.size)} � ${doc.pdfDoc.numPages} pages</span>
+      <span>${doc.comments.length} comment${doc.comments.length === 1 ? "" : "s"} � ${(doc.highlights || []).length} highlight${(doc.highlights || []).length === 1 ? "" : "s"}</span>
+      ${doc.validationError ? `<span class="document-error">${escapeHtml(doc.validationError)}</span>` : `<span>${doc.openAlex?.confidence ? `OpenAlex match ${(doc.openAlex.confidence * 100).toFixed(0)}%` : "Validated"}</span>`}
     `;
     button.addEventListener("click", () => {
       selectDocument(doc.id);
@@ -322,7 +335,8 @@ function applyGraphConfig() {
     .slice(0, 3)
     .map((input) => input.value);
   const depth = Number(elements.graphDepth.value) || 1;
-  setGraphConfig({ seedDocIds: selected, depth });
+  const maxRefs = elements.graphMaxRefs ? (Number(elements.graphMaxRefs.value) || 5) : 5;
+  setGraphConfig({ seedDocIds: selected, depth, maxRefs });
   closeGraphConfigModal();
   setMode("graph");
   renderActiveMode();
@@ -394,3 +408,5 @@ function describeError(error) {
   }
   return "This file could not be opened as a PDF.";
 }
+
+

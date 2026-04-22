@@ -85,6 +85,28 @@
           <div id="graph-stage" class="graph-stage hidden">
             <svg id="graph-edges" class="graph-edges"><g id="graph-edges-group"></g></svg>
             <div id="graph-nodes" class="graph-nodes"></div>
+            <div id="graph-indicators" class="graph-indicators"></div>
+            
+            <div class="zoom-toolbar">
+              <button type="button" id="graph-zoom-in" class="icon-button" title="Zoom In">+</button>
+              <button type="button" id="graph-zoom-reset" class="icon-button" title="Reset Zoom">⌂</button>
+              <button type="button" id="graph-zoom-out" class="icon-button" title="Zoom Out">−</button>
+            </div>
+
+            <div id="graph-context-menu" class="context-menu hidden">
+              <div class="context-menu-body">
+                <div class="mini-heading">Node Color</div>
+                <div class="color-swatches" id="context-node-colors">
+                  <button type="button" class="color-swatch-btn" data-color="default" style="background:var(--panel-strong);" title="Default"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#ffefd5" style="background:#ffefd5;"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#e6e6fa" style="background:#e6e6fa;"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#f0fff0" style="background:#f0fff0;"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#fff0f5" style="background:#fff0f5;"></button>
+                </div>
+                <hr>
+                <button type="button" id="context-download-btn" class="ghost-button" style="width:100%;">Download Data Source</button>
+              </div>
+            </div>
           </div>
         </section>
       </section>
@@ -134,6 +156,7 @@
           </div>
 
           <div class="graph-form card-stack">
+            <button id="reset-graph-layout" class="solid-button" type="button" style="margin-bottom:8px; width: 100%;">Reset Neat Layout</button>
             <button id="change-graph-config" class="ghost-button" type="button">Change Seeds / Depth</button>
             <label class="field-label" for="resolver-template">OpenAlex / Manual Resolver</label>
             <input id="resolver-template" class="text-field" type="text" placeholder="https://api.openalex.org/works?search={query}&per-page=5">
@@ -145,6 +168,18 @@
           <div class="graph-meta card-stack">
             <h3>Selected Node</h3>
             <div id="graph-selection" class="graph-selection placeholder-card">Select a node to inspect it.</div>
+            <div id="graph-node-meta-controls" class="hidden" style="margin-top:16px;">
+               <p class="mini-heading">Node Color</p>
+               <div id="graph-node-colors" class="color-swatches" style="display:flex;gap:8px;margin-bottom:12px;">
+                 <button type="button" class="color-swatch-btn" data-color="default" style="width:24px;height:24px;border-radius:50%;background:#ebe8e2;border:1px solid #ccc;"></button>
+                 <button type="button" class="color-swatch-btn" data-color="#e8f4fd" style="width:24px;height:24px;border-radius:50%;background:#e8f4fd;border:1px solid #ccc;"></button>
+                 <button type="button" class="color-swatch-btn" data-color="#eafaf1" style="width:24px;height:24px;border-radius:50%;background:#eafaf1;border:1px solid #ccc;"></button>
+                 <button type="button" class="color-swatch-btn" data-color="#fdeded" style="width:24px;height:24px;border-radius:50%;background:#fdeded;border:1px solid #ccc;"></button>
+                 <button type="button" class="color-swatch-btn" data-color="#fdfaed" style="width:24px;height:24px;border-radius:50%;background:#fdfaed;border:1px solid #ccc;"></button>
+               </div>
+               <p class="mini-heading">Node Notes (Session Specific)</p>
+               <textarea id="graph-node-notes" class="text-field" placeholder="Session notes for this paper..." style="height:80px;"></textarea>
+            </div>
           </div>
         </section>
       </aside>
@@ -181,6 +216,11 @@
         <option value="1">1 - seed paper references only</option>
         <option value="2">2 - references from referenced papers too</option>
       </select>
+      <label class="field-label" for="graph-max-refs" style="margin-top:12px;">Max References per Node (Top X)</label>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <input type="range" id="graph-max-refs" min="1" max="25" value="5" style="flex:1;">
+        <span id="graph-max-refs-display">5</span>
+      </div>
       <div class="modal-actions">
         <button id="cancel-graph-config" class="ghost-button" type="button">Cancel</button>
         <button id="build-graph" class="solid-button" type="button">Build graph</button>
