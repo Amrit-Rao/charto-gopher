@@ -1,4 +1,4 @@
-import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.mjs";
+﻿import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.mjs";
 import { GraphController } from "./graph-openalex.js";
 import { buildDocumentKey, enrichPdfDescriptor, loadPdfDescriptor } from "./pdf-utils.js";
 import { ReaderController } from "./reader.js";
@@ -48,12 +48,10 @@ const elements = {
   tabAi: document.getElementById("tab-ai"),
   commentsView: document.getElementById("comments-view"),
   notesView: document.getElementById("notes-view"),
-  aiView: document.getElementById("ai-view"),
   selectionContextMenu: document.getElementById("selection-context-menu"),
   selectionCopy: document.getElementById("selection-copy"),
   selectionHighlight: document.getElementById("selection-highlight"),
   selectionHighlightComment: document.getElementById("selection-highlight-comment"),
-  selectionSummarize: document.getElementById("selection-summarize"),
   modal: document.getElementById("comment-modal"),
   modalContext: document.getElementById("modal-context"),
   commentInput: document.getElementById("comment-input"),
@@ -78,11 +76,23 @@ const elements = {
   buildGraph: document.getElementById("build-graph"),
   seedList: document.getElementById("seed-list"),
   graphDepth: document.getElementById("graph-depth"),
+  graphMaxRefs: document.getElementById("graph-max-refs"),
+  graphMaxRefsDisplay: document.getElementById("graph-max-refs-display"),
+  resetGraphLayout: document.getElementById("reset-graph-layout"),
+  graphNodeColors: document.getElementById("graph-node-colors"),
+  graphNodeNotes: document.getElementById("graph-node-notes"),
+  graphNodeMetaControls: document.getElementById("graph-node-meta-controls"),
+  graphIndicators: document.getElementById("graph-indicators"),
+  graphContextMenu: document.getElementById("graph-context-menu"),
+  contextNodeColors: document.getElementById("context-node-colors"),
+  contextDownloadBtn: document.getElementById("context-download-btn"),
+  graphZoomIn: document.getElementById("graph-zoom-in"),
+  graphZoomReset: document.getElementById("graph-zoom-reset"),
+  graphZoomOut: document.getElementById("graph-zoom-out"),
 };
 
 const reader = new ReaderController(elements, pdfjsLib);
-const graph  = new GraphController(elements);
-const aiSummary = new AISummaryController(reader, elements);
+const graph = new GraphController(elements);
 let latestUploadBatchId = 0;
 
 attachEvents();
@@ -327,7 +337,8 @@ function applyGraphConfig() {
     .slice(0, 3)
     .map((input) => input.value);
   const depth = Number(elements.graphDepth.value) || 1;
-  setGraphConfig({ seedDocIds: selected, depth });
+  const maxRefs = elements.graphMaxRefs ? (Number(elements.graphMaxRefs.value) || 5) : 5;
+  setGraphConfig({ seedDocIds: selected, depth, maxRefs });
   closeGraphConfigModal();
   setMode("graph");
   renderActiveMode();
@@ -399,3 +410,35 @@ function describeError(error) {
   }
   return "This file could not be opened as a PDF.";
 }
+
+function isPdfFile(file) {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
+
+function setUploadStatus(message, isError = false) {
+  elements.uploadStatus.textContent = message;
+  elements.uploadStatus.classList.toggle("is-error", isError);
+}
+
+function buildUploadStatus(summary) {
+  const parts = [];
+  if (summary.added > 0) {
+    parts.push(`Loaded ${summary.added} PDF${summary.added === 1 ? "" : "s"}.`);
+  }
+  if (summary.duplicates > 0) {
+    parts.push(`Skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? "" : "s"}.`);
+  }
+  if (summary.failed.length > 0) {
+    parts.push(`Failed ${summary.failed.length}: ${summary.failed.map((entry) => entry.name).join(", ")}.`);
+  }
+  return parts.join(" ") || "No files were uploaded.";
+}
+
+function describeError(error) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "This file could not be opened as a PDF.";
+}
+
+
