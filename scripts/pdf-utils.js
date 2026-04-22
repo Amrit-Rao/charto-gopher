@@ -45,39 +45,101 @@ export async function enrichPdfDescriptor(descriptor) {
   };
 }
 
+export async function enrichPdfDescriptor(descriptor) {
+  const [previewResult, validationResult] = await Promise.allSettled([
+    renderPagePreview(descriptor.pdfDoc, 1, 220),
+    validateWithOpenAlex({ title: descriptor.title, identifiers: descriptor.identifiers }),
+  ]);
+
+  return {
+    firstPagePreview: previewResult.status === "fulfilled" ? previewResult.value : "",
+    openAlex: validationResult.status === "fulfilled"
+      ? validationResult.value
+      : {
+        valid: false,
+        confidence: 0,
+        error: "OpenAlex validation failed for this document.",
+      },
+  };
+}
+
+/**
+ * Validates a PDF against OpenAlex.
+ * 1. Checks DOI (Direct Match)
+ * 2. Checks Title (Fuzzy Match)
+ * 3. Validates similarity to ensure accuracy
+ */
 export async function validateWithOpenAlex({ title, identifiers }) {
-  if (identifiers.doi) {
-    try {
-      const response = await fetch(`${OPENALEX_BASE}/works/https://doi.org/${encodeURIComponent(identifiers.doi)}`);
+  const selectFields = "id,display_name,doi,referenced_works,abstract_inverted_index,publication_year,cited_by_count";
+  
+  try {
+    // --- PHASE 1: DIRECT DOI LOOKUP ---
+    if (identifiers.doi) {
+      // We trim and sanitize the DOI to avoid PDF artifacts
+      const cleanDoi = identifiers.doi.trim().toLowerCase();
+      const doiUrl = `${OPENALEX_BASE}/works/doi:${cleanDoi}?select=${selectFields}`;
+      
+      const response = await fetch(doiUrl);
       if (response.ok) {
         const work = await response.json();
-        return { valid: true, confidence: 1, work };
+        return { 
+          valid: true, 
+          confidence: 1.0, 
+          work, 
+          source: 'doi' 
+        };
       }
-    } catch {}
-  }
+    }
 
-  const response = await fetch(`${OPENALEX_BASE}/works?search=${encodeURIComponent(title)}&per-page=5&select=id,display_name,doi,ids,referenced_works_count,publication_year,authorships,abstract_inverted_index`);
-  const data = await response.json();
-  const candidates = data.results || [];
-  const scored = candidates.map((candidate) => ({
-    candidate,
-    score: similarity(normalizeTitle(candidate.display_name || ""), normalizeTitle(title)),
-  })).sort((a, b) => b.score - a.score);
+    // --- PHASE 2: TITLE SEARCH FALLBACK ---
+    // URLSearchParams automatically uses '+' for spaces
+    const queryParams = new URLSearchParams({
+      search: title,
+      'per-page': '1',
+      'select': selectFields
+    });
 
-  const best = scored[0];
-  if (!best || best.score < 0.72) {
+    const searchResponse = await fetch(`${OPENALEX_BASE}/works?${queryParams.toString()}`);
+    if (!searchResponse.ok) throw new Error("Search API unreachable");
+
+    const searchData = await searchResponse.json();
+    const candidate = searchData.results?.[0];
+
+    // --- PHASE 3: CONFIDENCE VALIDATION ---
+    if (candidate) {
+      const score = similarity(normalizeTitle(candidate.display_name), normalizeTitle(title));
+      
+      if (score >= 0.72) {
+        return { 
+          valid: true, 
+          confidence: score, 
+          work: candidate, 
+          source: 'title_search' 
+        };
+      }
+      
+      // If score is too low, we return the error state below
+      return {
+        valid: false,
+        confidence: score,
+        error: `Match found but confidence too low (${(score * 100).toFixed(1)}%).`
+      };
+    }
+
+    // --- PHASE 4: NO MATCH FOUND ---
     return {
       valid: false,
       confidence: best?.score || 0,
       error: "Could not confidently match this PDF to OpenAlex for graph expansion.",
     };
-  }
 
-  return {
-    valid: true,
-    confidence: best.score,
-    work: best.candidate,
-  };
+  } catch (error) {
+    return {
+      valid: false,
+      confidence: 0,
+      error: `OpenAlex connection error: ${error.message}`
+    };
+  }
 }
 
 export async function fetchOutgoingReferences(workId) {

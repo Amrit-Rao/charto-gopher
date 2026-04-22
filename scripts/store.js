@@ -10,8 +10,11 @@ export const state = {
   graphConfig: {
     seedDocIds: [],
     depth: 1,
+    maxRefs: 5,
   },
   resolverTemplate: "https://api.openalex.org/works?search={query}&per-page=5",
+  graphNodeMeta: {},
+  sessionId: crypto.randomUUID(),
 };
 
 export function subscribe(listener) {
@@ -95,5 +98,13 @@ export function setGraphConfig(config) {
 
 export function setResolverTemplate(template) {
   state.resolverTemplate = template;
+  emit();
+}
+
+export function updateGraphNodeMeta(nodeId, data) {
+  if (!state.graphNodeMeta[nodeId]) {
+    state.graphNodeMeta[nodeId] = {};
+  }
+  Object.assign(state.graphNodeMeta[nodeId], data);
   emit();
 }
