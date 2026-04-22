@@ -1,20 +1,19 @@
 ﻿import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136/pdf.min.mjs";
 import { GraphController } from "./graph-openalex.js";
-import { loadPdfDescriptor, buildDocumentKey } from "./pdf-utils.js";
+import { buildDocumentKey, enrichPdfDescriptor, loadPdfDescriptor } from "./pdf-utils.js";
 import { ReaderController } from "./reader.js";
 import {
   addDocument,
-  emit,
   findDocumentByKey,
   getCurrentDocument,
   removeDocument,
   selectDocument,
   setGraphConfig,
-  setGraphStatus,
   setMode,
   setResolverTemplate,
   state,
   subscribe,
+  updateDocument,
 } from "./store.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -22,6 +21,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 const elements = {
   upload: document.getElementById("pdf-upload"),
+  uploadStatus: document.getElementById("upload-status"),
   documentsList: document.getElementById("documents-list"),
   documentCount: document.getElementById("document-count"),
   modeReader: document.getElementById("mode-reader"),
@@ -46,9 +46,10 @@ const elements = {
   tabNotes: document.getElementById("tab-notes"),
   commentsView: document.getElementById("comments-view"),
   notesView: document.getElementById("notes-view"),
-  selectionToolbar: document.getElementById("selection-toolbar"),
-  highlightOnly: document.getElementById("highlight-only"),
-  highlightComment: document.getElementById("highlight-comment"),
+  selectionContextMenu: document.getElementById("selection-context-menu"),
+  selectionCopy: document.getElementById("selection-copy"),
+  selectionHighlight: document.getElementById("selection-highlight"),
+  selectionHighlightComment: document.getElementById("selection-highlight-comment"),
   modal: document.getElementById("comment-modal"),
   modalContext: document.getElementById("modal-context"),
   commentInput: document.getElementById("comment-input"),
@@ -90,6 +91,7 @@ const elements = {
 
 const reader = new ReaderController(elements, pdfjsLib);
 const graph = new GraphController(elements);
+let latestUploadBatchId = 0;
 
 attachEvents();
 subscribe(renderStaticShell);
@@ -99,48 +101,111 @@ renderActiveMode();
 function attachEvents() {
   elements.upload.addEventListener("change", onFileUpload);
   elements.modeReader.addEventListener("click", () => switchMode("reader"));
-  elements.modeGraph.addEventListener("click", () => openGraphConfig());
-  elements.graphRibbonAction.addEventListener("click", () => openGraphConfig());
-  elements.changeGraphConfig.addEventListener("click", () => openGraphConfig());
+  elements.modeGraph.addEventListener("click", openGraphConfig);
+  elements.graphRibbonAction.addEventListener("click", openGraphConfig);
+  elements.changeGraphConfig.addEventListener("click", openGraphConfig);
   elements.closeGraphConfig.addEventListener("click", closeGraphConfigModal);
   elements.cancelGraphConfig.addEventListener("click", closeGraphConfigModal);
   elements.buildGraph.addEventListener("click", applyGraphConfig);
-  elements.resolverTemplate.addEventListener("change", () => setResolverTemplate(elements.resolverTemplate.value.trim()));
+  elements.resolverTemplate.addEventListener("change", () => {
+    setResolverTemplate(elements.resolverTemplate.value.trim());
+  });
 }
 
 async function onFileUpload(event) {
   const files = Array.from(event.target.files ?? []);
-  if (files.length === 0) return;
+  if (files.length === 0) {
+    return;
+  }
+
+  const batchId = ++latestUploadBatchId;
+  const summary = {
+    added: 0,
+    duplicates: 0,
+    failed: [],
+  };
+  setUploadStatus(`Loading ${files.length} PDF${files.length === 1 ? "" : "s"}...`);
+
   for (const file of files) {
-    const key = buildDocumentKey(file);
-    const existing = findDocumentByKey(key);
-    if (existing) {
-      selectDocument(existing.id);
+    if (!isPdfFile(file)) {
+      summary.failed.push({
+        name: file.name,
+        error: "Only PDF files can be uploaded here.",
+      });
       continue;
     }
-    const descriptor = await loadPdfDescriptor(file, pdfjsLib);
-    addDocument({
-      id: crypto.randomUUID(),
-      key,
-      file,
-      pdfDoc: descriptor.pdfDoc,
-      metadata: descriptor.metadata,
-      name: file.name,
-      title: descriptor.title,
-      abstract: descriptor.abstract,
-      firstPagePreview: descriptor.firstPagePreview,
-      identifiers: descriptor.identifiers,
-      openAlex: descriptor.openAlex,
-      validationError: descriptor.openAlex.valid ? "" : descriptor.openAlex.error,
-      size: file.size,
-      comments: readStored(`comments:${key}`, []),
-      notes: readStored(`notes:${key}`, ""),
-      highlights: readStored(`highlights:${key}`, []),
-      lastReaderPage: 1,
-    });
+
+    try {
+      const key = buildDocumentKey(file);
+      const existing = findDocumentByKey(key);
+      if (existing) {
+        selectDocument(existing.id);
+        renderActiveMode();
+        summary.duplicates += 1;
+        continue;
+      }
+
+      const descriptor = await loadPdfDescriptor(file, pdfjsLib);
+      const documentRecord = {
+        id: crypto.randomUUID(),
+        key,
+        file,
+        pdfDoc: descriptor.pdfDoc,
+        metadata: descriptor.metadata,
+        name: file.name,
+        title: descriptor.title,
+        abstract: descriptor.abstract,
+        firstPagePreview: "",
+        identifiers: descriptor.identifiers,
+        openAlex: { valid: false, confidence: 0, pending: true },
+        validationError: "",
+        size: file.size,
+        comments: readStored(`comments:${key}`, []),
+        notes: readStored(`notes:${key}`, ""),
+        highlights: readStored(`highlights:${key}`, []),
+        lastReaderPage: 1,
+      };
+
+      addDocument(documentRecord);
+      renderActiveMode();
+      summary.added += 1;
+      void hydrateDocument(documentRecord.id, descriptor);
+    } catch (error) {
+      console.error("Upload failed for", file.name, error);
+      summary.failed.push({
+        name: file.name,
+        error: describeError(error),
+      });
+    }
   }
+
   event.target.value = "";
   renderActiveMode();
+  if (batchId === latestUploadBatchId) {
+    setUploadStatus(buildUploadStatus(summary), summary.failed.length > 0);
+  }
+}
+
+async function hydrateDocument(documentId, descriptor) {
+  try {
+    const enrichment = await enrichPdfDescriptor(descriptor);
+    updateDocument(documentId, (doc) => {
+      doc.firstPagePreview = enrichment.firstPagePreview;
+      doc.openAlex = enrichment.openAlex;
+      doc.validationError = enrichment.openAlex.valid ? "" : enrichment.openAlex.error;
+    });
+  } catch (error) {
+    console.error("Document enrichment failed", error);
+    updateDocument(documentId, (doc) => {
+      doc.openAlex = {
+        valid: false,
+        confidence: 0,
+        pending: false,
+        error: "Preview or OpenAlex enrichment failed.",
+      };
+      doc.validationError = "Preview or OpenAlex enrichment failed.";
+    });
+  }
 }
 
 function switchMode(mode) {
@@ -161,10 +226,11 @@ function renderActiveMode() {
   if (state.mode === "reader") {
     graph.deactivate();
     reader.activate();
-  } else {
-    reader.deactivate();
-    graph.activate();
+    return;
   }
+
+  reader.deactivate();
+  graph.activate();
 }
 
 function renderDocumentsList() {
@@ -173,13 +239,20 @@ function renderDocumentsList() {
     elements.documentsList.innerHTML = '<div class="placeholder-card">No PDFs loaded yet.</div>';
     return;
   }
+
   const fragment = document.createDocumentFragment();
-  state.documents.forEach((doc) => {
+  for (const doc of state.documents) {
     const row = document.createElement("div");
     row.className = "document-row";
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = `document-item${doc.id === state.selectedDocumentId ? " is-active" : ""}${doc.validationError ? " is-invalid" : ""}`;
+    const validationSummary = doc.openAlex?.pending
+      ? "Validating against OpenAlex..."
+      : doc.validationError
+        ? `<span class="document-error">${escapeHtml(doc.validationError)}</span>`
+        : `<span>${doc.openAlex?.confidence ? `OpenAlex match ${(doc.openAlex.confidence * 100).toFixed(0)}%` : "Validated"}</span>`;
     button.innerHTML = `
       <strong>${escapeHtml(doc.title)}</strong>
       <span>${formatBytes(doc.size)} � ${doc.pdfDoc.numPages} pages</span>
@@ -190,10 +263,11 @@ function renderDocumentsList() {
       selectDocument(doc.id);
       renderActiveMode();
     });
+
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "document-remove";
-    removeButton.textContent = "�";
+    removeButton.textContent = "x";
     removeButton.addEventListener("click", (event) => {
       event.stopPropagation();
       removeDocument(doc.id);
@@ -202,10 +276,12 @@ function renderDocumentsList() {
       localStorage.removeItem(`highlights:${doc.key}`);
       renderActiveMode();
     });
+
     row.appendChild(button);
     row.appendChild(removeButton);
     fragment.appendChild(row);
-  });
+  }
+
   elements.documentsList.innerHTML = "";
   elements.documentsList.appendChild(fragment);
 }
@@ -222,22 +298,28 @@ function updateGraphSummaryText() {
     elements.graphSummary.textContent = "Open a PDF, then pop the graph open to map references.";
     return;
   }
+
   const seedCount = state.graphConfig.seedDocIds.length;
-  elements.graphSummary.textContent = `${current.title} � ${seedCount} seed paper${seedCount === 1 ? "" : "s"} selected for graph depth ${state.graphConfig.depth}.`;
+  elements.graphSummary.textContent = `${current.title} - ${seedCount} seed paper${seedCount === 1 ? "" : "s"} selected for graph depth ${state.graphConfig.depth}.`;
 }
 
 function openGraphConfig() {
-  if (!state.documents.length) return;
+  if (!state.documents.length) {
+    return;
+  }
+
   const fragment = document.createDocumentFragment();
-  state.documents.forEach((doc) => {
+  for (const doc of state.documents) {
     const option = document.createElement("label");
-    option.className = `seed-option${doc.validationError ? " is-invalid" : ""}`;
+    const disabled = Boolean(doc.validationError || doc.openAlex?.pending);
+    option.className = `seed-option${disabled ? " is-invalid" : ""}`;
     option.innerHTML = `
-      <input type="checkbox" value="${doc.id}" ${state.graphConfig.seedDocIds.includes(doc.id) ? "checked" : ""} ${doc.validationError ? "disabled" : ""}>
-      <span><strong>${escapeHtml(doc.title)}</strong><span>${doc.validationError ? escapeHtml(doc.validationError) : "Validated for graph seeding"}</span></span>
+      <input type="checkbox" value="${doc.id}" ${state.graphConfig.seedDocIds.includes(doc.id) ? "checked" : ""} ${disabled ? "disabled" : ""}>
+      <span><strong>${escapeHtml(doc.title)}</strong><span>${doc.openAlex?.pending ? "Validation in progress..." : doc.validationError ? escapeHtml(doc.validationError) : "Validated for graph seeding"}</span></span>
     `;
     fragment.appendChild(option);
-  });
+  }
+
   elements.seedList.innerHTML = "";
   elements.seedList.appendChild(fragment);
   elements.graphDepth.value = String(state.graphConfig.depth || 1);
@@ -249,7 +331,9 @@ function closeGraphConfigModal() {
 }
 
 function applyGraphConfig() {
-  const selected = Array.from(elements.seedList.querySelectorAll("input:checked")).slice(0, 3).map((input) => input.value);
+  const selected = Array.from(elements.seedList.querySelectorAll("input:checked"))
+    .slice(0, 3)
+    .map((input) => input.value);
   const depth = Number(elements.graphDepth.value) || 1;
   const maxRefs = elements.graphMaxRefs ? (Number(elements.graphMaxRefs.value) || 5) : 5;
   setGraphConfig({ seedDocIds: selected, depth, maxRefs });
@@ -260,21 +344,69 @@ function applyGraphConfig() {
 
 function readStored(key, fallback) {
   const value = localStorage.getItem(key);
-  if (!value) return fallback;
-  if (typeof fallback === "string") return value;
-  try { return JSON.parse(value); } catch { return fallback; }
+  if (!value) {
+    return fallback;
+  }
+
+  if (typeof fallback === "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
 }
 
 function formatBytes(bytes) {
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;
   let index = 0;
-  while (value >= 1024 && index < units.length - 1) { value /= 1024; index += 1; }
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index += 1;
+  }
   return `${value.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
 function escapeHtml(text) {
-  return String(text || "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  return String(text || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function isPdfFile(file) {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
+
+function setUploadStatus(message, isError = false) {
+  elements.uploadStatus.textContent = message;
+  elements.uploadStatus.classList.toggle("is-error", isError);
+}
+
+function buildUploadStatus(summary) {
+  const parts = [];
+  if (summary.added > 0) {
+    parts.push(`Loaded ${summary.added} PDF${summary.added === 1 ? "" : "s"}.`);
+  }
+  if (summary.duplicates > 0) {
+    parts.push(`Skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? "" : "s"}.`);
+  }
+  if (summary.failed.length > 0) {
+    parts.push(`Failed ${summary.failed.length}: ${summary.failed.map((entry) => entry.name).join(", ")}.`);
+  }
+  return parts.join(" ") || "No files were uploaded.";
+}
+
+function describeError(error) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "This file could not be opened as a PDF.";
 }
 
 
