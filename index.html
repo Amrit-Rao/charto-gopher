@@ -6,6 +6,7 @@
   <title>PDF Reader Prototype</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./styles/ai-summary.css">
 </head>
 <body>
   <div class="app-shell">
@@ -94,6 +95,7 @@
           <div class="tabs" role="tablist" aria-label="Reader sidebar tabs">
             <button id="tab-comments" class="tab is-active" type="button" role="tab" aria-selected="true">Comments</button>
             <button id="tab-notes" class="tab" type="button" role="tab" aria-selected="false">Notes</button>
+            <button id="tab-ai" class="tab" type="button" role="tab" aria-selected="false">✦ AI</button>
           </div>
 
           <section id="comments-view" class="sidebar-view">
@@ -125,6 +127,8 @@
             </div>
             <p id="notes-status" class="muted">Nothing saved yet.</p>
           </section>
+
+          <section id="ai-view" class="sidebar-view hidden" aria-label="AI Chat"></section>
         </section>
 
         <section id="graph-sidebar" class="sidebar-shell hidden">
@@ -192,6 +196,7 @@
     <button id="selection-copy" class="ghost-button" type="button">Copy</button>
     <button id="selection-highlight" class="ghost-button" type="button">Highlight</button>
     <button id="selection-highlight-comment" class="solid-button" type="button">Highlight + Comment</button>
+    <button id="selection-summarize" type="button"><span class="sparkle">✦</span> Summarize</button>
   </div>
 
   <script type="module" src="./scripts/main.js"></script>

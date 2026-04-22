@@ -2,6 +2,7 @@ import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.3.136
 import { GraphController } from "./graph-openalex.js";
 import { buildDocumentKey, enrichPdfDescriptor, loadPdfDescriptor } from "./pdf-utils.js";
 import { ReaderController } from "./reader.js";
+import { AISummaryController } from "./ai-summary-controller.js";
 import {
   addDocument,
   findDocumentByKey,
@@ -44,12 +45,15 @@ const elements = {
   notesStatus: document.getElementById("notes-status"),
   tabComments: document.getElementById("tab-comments"),
   tabNotes: document.getElementById("tab-notes"),
+  tabAi: document.getElementById("tab-ai"),
   commentsView: document.getElementById("comments-view"),
   notesView: document.getElementById("notes-view"),
+  aiView: document.getElementById("ai-view"),
   selectionContextMenu: document.getElementById("selection-context-menu"),
   selectionCopy: document.getElementById("selection-copy"),
   selectionHighlight: document.getElementById("selection-highlight"),
   selectionHighlightComment: document.getElementById("selection-highlight-comment"),
+  selectionSummarize: document.getElementById("selection-summarize"),
   modal: document.getElementById("comment-modal"),
   modalContext: document.getElementById("modal-context"),
   commentInput: document.getElementById("comment-input"),
@@ -77,7 +81,8 @@ const elements = {
 };
 
 const reader = new ReaderController(elements, pdfjsLib);
-const graph = new GraphController(elements);
+const graph  = new GraphController(elements);
+const aiSummary = new AISummaryController(reader, elements);
 let latestUploadBatchId = 0;
 
 attachEvents();
