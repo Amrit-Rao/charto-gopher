@@ -45,6 +45,24 @@ export async function enrichPdfDescriptor(descriptor) {
   };
 }
 
+export async function enrichPdfDescriptor(descriptor) {
+  const [previewResult, validationResult] = await Promise.allSettled([
+    renderPagePreview(descriptor.pdfDoc, 1, 220),
+    validateWithOpenAlex({ title: descriptor.title, identifiers: descriptor.identifiers }),
+  ]);
+
+  return {
+    firstPagePreview: previewResult.status === "fulfilled" ? previewResult.value : "",
+    openAlex: validationResult.status === "fulfilled"
+      ? validationResult.value
+      : {
+        valid: false,
+        confidence: 0,
+        error: "OpenAlex validation failed for this document.",
+      },
+  };
+}
+
 /**
  * Validates a PDF against OpenAlex.
  * 1. Checks DOI (Direct Match)

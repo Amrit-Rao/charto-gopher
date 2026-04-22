@@ -2,6 +2,7 @@
 import { GraphController } from "./graph-openalex.js";
 import { buildDocumentKey, enrichPdfDescriptor, loadPdfDescriptor } from "./pdf-utils.js";
 import { ReaderController } from "./reader.js";
+import { AISummaryController } from "./ai-summary-controller.js";
 import {
   addDocument,
   findDocumentByKey,
@@ -44,6 +45,7 @@ const elements = {
   notesStatus: document.getElementById("notes-status"),
   tabComments: document.getElementById("tab-comments"),
   tabNotes: document.getElementById("tab-notes"),
+  tabAi: document.getElementById("tab-ai"),
   commentsView: document.getElementById("comments-view"),
   notesView: document.getElementById("notes-view"),
   selectionContextMenu: document.getElementById("selection-context-menu"),
@@ -255,9 +257,9 @@ function renderDocumentsList() {
         : `<span>${doc.openAlex?.confidence ? `OpenAlex match ${(doc.openAlex.confidence * 100).toFixed(0)}%` : "Validated"}</span>`;
     button.innerHTML = `
       <strong>${escapeHtml(doc.title)}</strong>
-      <span>${formatBytes(doc.size)} � ${doc.pdfDoc.numPages} pages</span>
-      <span>${doc.comments.length} comment${doc.comments.length === 1 ? "" : "s"} � ${(doc.highlights || []).length} highlight${(doc.highlights || []).length === 1 ? "" : "s"}</span>
-      ${doc.validationError ? `<span class="document-error">${escapeHtml(doc.validationError)}</span>` : `<span>${doc.openAlex?.confidence ? `OpenAlex match ${(doc.openAlex.confidence * 100).toFixed(0)}%` : "Validated"}</span>`}
+      <span>${formatBytes(doc.size)} - ${doc.pdfDoc.numPages} pages</span>
+      <span>${doc.comments.length} comment${doc.comments.length === 1 ? "" : "s"} - ${(doc.highlights || []).length} highlight${(doc.highlights || []).length === 1 ? "" : "s"}</span>
+      ${validationSummary}
     `;
     button.addEventListener("click", () => {
       selectDocument(doc.id);
@@ -377,6 +379,36 @@ function escapeHtml(text) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function isPdfFile(file) {
+  return file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+}
+
+function setUploadStatus(message, isError = false) {
+  elements.uploadStatus.textContent = message;
+  elements.uploadStatus.classList.toggle("is-error", isError);
+}
+
+function buildUploadStatus(summary) {
+  const parts = [];
+  if (summary.added > 0) {
+    parts.push(`Loaded ${summary.added} PDF${summary.added === 1 ? "" : "s"}.`);
+  }
+  if (summary.duplicates > 0) {
+    parts.push(`Skipped ${summary.duplicates} duplicate${summary.duplicates === 1 ? "" : "s"}.`);
+  }
+  if (summary.failed.length > 0) {
+    parts.push(`Failed ${summary.failed.length}: ${summary.failed.map((entry) => entry.name).join(", ")}.`);
+  }
+  return parts.join(" ") || "No files were uploaded.";
+}
+
+function describeError(error) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "This file could not be opened as a PDF.";
 }
 
 function isPdfFile(file) {
