@@ -48,10 +48,12 @@ const elements = {
   tabAi: document.getElementById("tab-ai"),
   commentsView: document.getElementById("comments-view"),
   notesView: document.getElementById("notes-view"),
+  aiView: document.getElementById("ai-view"),
   selectionContextMenu: document.getElementById("selection-context-menu"),
   selectionCopy: document.getElementById("selection-copy"),
   selectionHighlight: document.getElementById("selection-highlight"),
   selectionHighlightComment: document.getElementById("selection-highlight-comment"),
+  selectionSummarize: document.getElementById("selection-summarize"),
   modal: document.getElementById("comment-modal"),
   modalContext: document.getElementById("modal-context"),
   commentInput: document.getElementById("comment-input"),
@@ -92,7 +94,8 @@ const elements = {
 };
 
 const reader = new ReaderController(elements, pdfjsLib);
-const graph = new GraphController(elements);
+const graph  = new GraphController(elements);
+const aiSummary = new AISummaryController(reader, elements);
 let latestUploadBatchId = 0;
 
 attachEvents();
